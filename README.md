@@ -61,7 +61,7 @@ autoencoder_poc
 
 git cloneで本リポジトリをクローンします。
 ```bash
-git clone https://github.com/toshiyanakamura/mlops-autoencoder.git
+git clone https://github.com/mlops-seminer/mlops-autoencoder.git
 ```
 
 以下のuvコマンドで仮想環境を構築します
