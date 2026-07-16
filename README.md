@@ -32,7 +32,7 @@
 
 ```
 autoencoder_poc  
-└── data  
+└── data/kinoko  
     ├── train  
     │   └── good  
     │       ├── 学習用正常画像1.png  
