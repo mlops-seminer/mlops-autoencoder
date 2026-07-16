@@ -11,6 +11,72 @@ from datetime import datetime
 from dataset import get_dataloaders
 from model import Autoencoder
 
+
+def build_registry_model_uri(resume_cfg):
+    """MLflow Model Registryから読み込むモデルURIを組み立てる。"""
+    explicit_uri = resume_cfg.get("model_uri")
+    if explicit_uri:
+        return str(explicit_uri)
+
+    registered_model_name = resume_cfg.get("registered_model_name")
+    if not registered_model_name:
+        raise ValueError(
+            "再学習でMLflow Model Registryを使用する場合は "
+            "training.resume.registered_model_name を指定してください。"
+        )
+
+    alias = resume_cfg.get("model_alias")
+    version = resume_cfg.get("model_version")
+
+    if alias:
+        return f"models:/{registered_model_name}@{alias}"
+    if version is not None:
+        return f"models:/{registered_model_name}/{version}"
+
+    raise ValueError(
+        "training.resume.model_alias、training.resume.model_version、"
+        "training.resume.model_uri のいずれかを指定してください。"
+    )
+
+
+def load_initial_weights(model, cfg, device):
+    """ローカルまたはMLflow Model Registryから再学習用の重みを読み込む。"""
+    resume_cfg = cfg.training.get("resume", {})
+    enabled = bool(resume_cfg.get("enabled", False))
+
+    # 後方互換: 旧 resume_model_path が指定されていればローカル重みを使う
+    legacy_path = cfg.training.get("resume_model_path")
+    if not enabled and legacy_path:
+        resume_cfg = {"enabled": True, "source": "local", "local_path": legacy_path}
+        enabled = True
+
+    if not enabled:
+        print("Training mode: new model")
+        return None
+
+    source = str(resume_cfg.get("source", "registry")).lower()
+
+    if source == "registry":
+        model_uri = build_registry_model_uri(resume_cfg)
+        print(f"Downloading pretrained model from MLflow Model Registry: {model_uri}")
+        loaded_model = mlflow.pytorch.load_model(model_uri, map_location=device)
+        model.load_state_dict(loaded_model.state_dict(), strict=True)
+        del loaded_model
+        print("Pretrained weights loaded from MLflow Model Registry.")
+        return model_uri
+
+    if source == "local":
+        local_path = hydra.utils.to_absolute_path(str(resume_cfg.get("local_path", "")))
+        if not local_path or not os.path.exists(local_path):
+            raise FileNotFoundError(f"再学習用モデルが見つかりません: {local_path}")
+        print(f"Loading pretrained weights from local file: {local_path}")
+        state_dict = torch.load(local_path, map_location=device)
+        model.load_state_dict(state_dict, strict=True)
+        print("Pretrained weights loaded from local file.")
+        return local_path
+
+    raise ValueError(f"training.resume.source は registry または local を指定してください: {source}")
+
 @hydra.main(version_base=None, config_path="./config/", config_name="config")
 def main(cfg: DictConfig):
     print("Configuration:")
@@ -45,10 +111,8 @@ def main(cfg: DictConfig):
         latent_dim=cfg.model.latent_dim
     ).to(device)
     
-    # 再学習の場合
-    if cfg.training.resume_model_path and os.path.exists(cfg.training.resume_model_path):
-        print(f"Loading model from {cfg.training.resume_model_path}")
-        model.load_state_dict(torch.load(cfg.training.resume_model_path))
+    # 新規学習または再学習用の初期重みを読み込む
+    resume_source = load_initial_weights(model, cfg, device)
     
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=cfg.training.learning_rate)
@@ -61,6 +125,9 @@ def main(cfg: DictConfig):
     # --- Training Loop ---
     with mlflow.start_run(run_name=run_name):
         mlflow.log_params(OmegaConf.to_container(cfg, resolve=True))
+        mlflow.set_tag("training_mode", "retraining" if resume_source else "new_training")
+        if resume_source:
+            mlflow.set_tag("resume_source", str(resume_source))
         
         # 学習を実行するかどうか（train_loaderがあるか）
         if train_loader:
@@ -122,8 +189,13 @@ def main(cfg: DictConfig):
             if os.path.exists(model_file_path):
                 print(f"Loading best model ({model_file_path}) for evaluation...")
                 model.load_state_dict(torch.load(model_file_path))
-                # PyTorchモデルとして保存
-                mlflow.pytorch.log_model(model, artifact_path=model_name_conf)
+                # PyTorchモデルとして保存し、必要に応じてModel Registryへ自動登録
+                registered_model_name = cfg.mlflow.get("registered_model_name")
+                mlflow.pytorch.log_model(
+                    model,
+                    artifact_path=model_name_conf,
+                    registered_model_name=registered_model_name
+                )
                 # state_dictファイルもアーティファクトとして残したければ以下をコメントアウト解除
                 # mlflow.log_artifact(model_file_path)
         

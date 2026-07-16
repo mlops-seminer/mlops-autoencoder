@@ -213,3 +213,90 @@ PoC では良い感じの値を探索する必要があります。
 - **latent_dim** → 圧縮率と異常検知性能のバランス  
 を決定する重要なパラメータです。
 
+
+## MLflow Model Registryのモデルを使用した再学習
+
+学習済みモデルをModel Registryから取得し、その重みを初期値として追加学習できます。
+
+### 1. エイリアスを指定して再学習する
+
+`config/config.yaml` を次のように変更します。
+
+```yaml
+training:
+  resume:
+    enabled: true
+    source: "registry"
+    registered_model_name: "kinoko"
+    model_alias: "champion"
+    model_version: null
+    model_uri: null
+```
+
+この設定では、次のMLflowモデルURIからモデルをダウンロードします。
+
+```text
+models:/kinoko@champion
+```
+
+### 2. バージョンを指定して再学習する
+
+```yaml
+training:
+  resume:
+    enabled: true
+    source: "registry"
+    registered_model_name: "kinoko"
+    model_alias: null
+    model_version: 3
+```
+
+この場合は `models:/kinoko/3` が読み込まれます。
+
+### 3. モデルURIを直接指定する
+
+```yaml
+training:
+  resume:
+    enabled: true
+    source: "registry"
+    model_uri: "models:/kinoko@champion"
+```
+
+`model_uri` が指定されている場合は、モデル名・エイリアス・バージョンからのURI生成より優先されます。
+
+### 4. 再学習の実行
+
+```bash
+python autoencoder_poc/main.py
+```
+
+実行時は、MLflow Model RegistryからPyTorchモデルがダウンロードされ、取得したモデルの `state_dict` が現在のAutoencoderへ読み込まれます。その後、設定した学習率とエポック数で再学習します。
+
+再学習のRunには、次のタグが記録されます。
+
+- `training_mode: retraining`
+- `resume_source: models:/kinoko@champion` など
+
+### 5. 再学習後のモデル登録
+
+次の設定により、学習終了後のモデルがModel Registryへ自動登録されます。
+
+```yaml
+mlflow:
+  model_name: "autoencoder_model"
+  registered_model_name: "kinoko"
+```
+
+同じ登録モデル名を指定すると、新しいモデルバージョンとして追加されます。自動登録しない場合は `registered_model_name: null` にします。
+
+### 注意事項
+
+再学習元と現在の設定で、次のモデル構造を一致させてください。
+
+- `dataset.channels`
+- `dataset.input_size`
+- `model.enc_channels`
+- `model.latent_dim`
+
+構造が異なる場合は、`state_dict` の読み込み時にサイズ不一致エラーになります。

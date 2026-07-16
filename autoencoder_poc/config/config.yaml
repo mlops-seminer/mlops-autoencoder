@@ -1,25 +1,43 @@
 dataset:
   root_dir: "autoencoder_poc/data/kinoko"  # データセットのルートディレクトリ
-  train_dir: "train/good" # トレーニングデータのサブディレクトリ
-  test_dir: "test" # テストデータのサブディレクトリ
-  input_size: [256, 256] # 入力画像のサイズ
-  channels: 3 # 画像のチャンネル数 (例: RGB画像なら3)
-  validation_ratio: 0.1 # トレーニングデータのうち、検証データに使用する割合
-  batch_size: 32 # バッチサイズ
-  num_workers: 0 # データローダーのワーカースレッド数
+  train_dir: "train/good"                  # トレーニングデータのサブディレクトリ
+  test_dir: "test"                         # テストデータのサブディレクトリ
+  input_size: [256, 256]                    # 入力画像のサイズ
+  channels: 3                               # RGB画像なら3、グレースケールなら1
+  validation_ratio: 0.1
+  batch_size: 32
+  num_workers: 0
 
 model:
-  enc_channels: [32, 64] # エンコーダの各層のチャネル数
-  latent_dim: 4 # 潜在空間の次元数
+  # 再学習元モデルと同じ構造を指定してください。
+  enc_channels: [32, 64]
+  latent_dim: 2
 
 training:
-  epochs: 10 # トレーニングのエポック数
-  learning_rate: 0.0000001 # 学習率
-  early_stopping_patience: 5 # 早期停止の忍耐エポック数
-  resume_model_path: null # 事前学習済みモデルのパス (nullの場合は新規トレーニング)
+  epochs: 10
+  learning_rate: 0.0000001
+  early_stopping_patience: 5
+
+  # 再学習設定
+  resume:
+    enabled: false              # true: 学習済みモデルから再学習、false: 新規学習
+    source: "registry"          # registry または local
+
+    # --- MLflow Model Registryから取得する場合 ---
+    registered_model_name: "kinoko"
+    model_alias: null     # 例: champion
+    model_version: latest          # バージョン指定.aliasが優先される
+    model_uri: null              # 直接指定例: "models:/kinoko@champion"
+
+    # --- ローカルのstate_dictを使う場合 ---
+    local_path: null             # 例: "models/autoencoder_model.pth"
+
+  # 旧設定との後方互換用。新規利用ではresume.local_pathを推奨
+  resume_model_path: null
 
 mlflow:
-  experiment_name: "Autoencoder_Anomaly_Detection" # MLflowの実験名
-  tracking_uri: "http://localhost:8080" # MLflowのトラッキングURI
-  run_name: null # MLflowのラン名 (nullの場合は自動生成)
-  model_name: "autoencoder_model" # 保存するモデルの名前
+  experiment_name: "Autoencoder_Anomaly_Detection"
+  tracking_uri: "http://localhost:8080"
+  run_name: null
+  model_name: "autoencoder_model"      # Run内のartifact_path
+  registered_model_name: "kinoko"      # 学習後にModel Registryへ自動登録する名前。nullなら登録しない
