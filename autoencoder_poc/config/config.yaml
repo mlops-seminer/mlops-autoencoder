@@ -40,4 +40,4 @@ mlflow:
   tracking_uri: "http://localhost:8080"
   run_name: null
   model_name: "autoencoder_model"      # Run内のartifact_path
-  registered_model_name: "kinoko"      # 学習後にModel Registryへ自動登録する名前。nullなら登録しない
+  registered_model_name: null      # 学習後にModel Registryへ自動登録する名前。nullなら登録しない
