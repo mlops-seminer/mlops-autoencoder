@@ -13,11 +13,11 @@ dataset:
 model:
   # 再学習元モデルと同じ構造を指定してください。
   enc_channels: [32, 64]
-  latent_dim: 128
+  latent_dim: 2
 
 training:
-  epochs: 100
-  learning_rate: 0.01
+  epochs: 10
+  learning_rate: 0.000001
   early_stopping_patience: 5
 
   # 再学習設定
