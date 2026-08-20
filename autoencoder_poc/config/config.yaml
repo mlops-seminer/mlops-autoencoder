@@ -5,28 +5,30 @@ dataset:
   input_size: [256, 256]                    # 入力画像のサイズ
   channels: 3                               # RGB画像なら3、グレースケールなら1
   validation_ratio: 0.1
+  split_strategy: "sequential"              # 連続フレームの混入を抑える時系列分割。randomも指定可
   batch_size: 32
   num_workers: 0
+  seed: 42
 
 model:
   # 再学習元モデルと同じ構造を指定してください。
   enc_channels: [32, 64]
-  latent_dim: 2
+  latent_dim: 128
 
 training:
-  epochs: 10
-  learning_rate: 0.0000001
+  epochs: 100
+  learning_rate: 0.01
   early_stopping_patience: 5
 
   # 再学習設定
   resume:
-    enabled: false              # true: 学習済みモデルから再学習、false: 新規学習
+    enabled: true              # true: 学習済みモデルから再学習、false: 新規学習
     source: "registry"          # registry または local
 
     # --- MLflow Model Registryから取得する場合 ---
     registered_model_name: "kinoko"
-    model_alias: null     # 例: champion
-    model_version: latest          # バージョン指定.aliasが優先される
+    model_alias: null            # 例: champion
+    model_version: latest        # 数値、または最新版を取得する latest
     model_uri: null              # 直接指定例: "models:/kinoko@champion"
 
     # --- ローカルのstate_dictを使う場合 ---
@@ -34,6 +36,11 @@ training:
 
   # 旧設定との後方互換用。新規利用ではresume.local_pathを推奨
   resume_model_path: null
+
+evaluation:
+  normal_class: "good"          # test_dir配下の正常クラス名
+  threshold: null               # 固定閾値。nullならvalidationデータから算出
+  threshold_quantile: 0.99      # 正常validationスコアの分位点
 
 mlflow:
   experiment_name: "Autoencoder_Anomaly_Detection"

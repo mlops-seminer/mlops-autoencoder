@@ -4,6 +4,22 @@ import torch.nn as nn
 class Autoencoder(nn.Module):
     def __init__(self, input_channels, input_size, enc_channels, latent_dim):
         super(Autoencoder, self).__init__()
+
+        if int(input_channels) <= 0:
+            raise ValueError("input_channels は1以上で指定してください。")
+        if len(input_size) != 2 or any(int(size) <= 0 for size in input_size):
+            raise ValueError("input_size は正の整数2要素で指定してください。")
+        if not enc_channels or any(int(ch) <= 0 for ch in enc_channels):
+            raise ValueError("enc_channels は正の整数を1個以上指定してください。")
+        if int(latent_dim) <= 0:
+            raise ValueError("latent_dim は1以上で指定してください。")
+
+        downsample_factor = 2 ** len(enc_channels)
+        if any(int(size) % downsample_factor != 0 for size in input_size):
+            raise ValueError(
+                "input_size の縦横は、2 ** len(enc_channels) "
+                f"(={downsample_factor}) で割り切れる必要があります: {list(input_size)}"
+            )
         
         # --- Encoder ---
         self.encoder_layers = nn.ModuleList()

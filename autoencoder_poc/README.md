@@ -6,7 +6,7 @@
 ## 前提条件
 
 1.  `create_traindata` ツールなどで、データセット（`train/good`, `test/good`, `test/anomaly`）が用意されていること。
-2.  Python環境に `mlflow` がインストールされていること。
+2.  プロジェクトルートで `uv sync` を実行し、その後CUDA環境に合ったPyTorch・torchvisionを手動でインストールしていること。
 
 ## 実行手順
 
@@ -37,7 +37,7 @@ python autoencoder_poc/main.py
 実験名 `Autoencoder_Anomaly_Detection` の中に、今回の実行結果（Run）が記録されています。
 
 **確認できる項目:**
-*   **Metrics**: `train_loss`, `val_loss`, 各クラスの異常スコア（平均・分散など）
+*   **Metrics**: `train_loss`, `val_loss`, 各クラスの異常スコア、`roc_auc`, `pr_auc`, `accuracy`, `precision`, `recall`, `f1`
 *   **Artifacts**:
     *   `reconstruction_comparison.png`: 元画像と再構成画像の比較
     *   `boxplot.png`: クラスごとの異常スコアの分布（箱ひげ図）
@@ -59,6 +59,7 @@ python autoencoder_poc/main.py
 `config/config.yaml` ファイルで学習パラメータを変更できます。
 
 *   **dataset**: データセットのパスや画像サイズ
+    *   `split_strategy`: `sequential`は時刻順の後半をvalidationに使い、連続撮影フレームのtrain/validation混入を抑えます
 *   **training**:
     *   `epochs`: 学習回数
     *   `learning_rate`: 学習率
@@ -66,6 +67,10 @@ python autoencoder_poc/main.py
 *   **model**:
     *   `enc_channels`: エンコーダーの層構造
     *   `latent_dim`: 潜在変数の次元数
+*   **evaluation**:
+    *   `normal_class`: テストデータ内の正常クラス名
+    *   `threshold`: 固定の異常判定閾値。`null`の場合は正常validationデータから算出
+    *   `threshold_quantile`: 閾値の算出に使うvalidationスコアの分位点
 
 ## 補足：オートエンコーダのモデル構造
 ## 1. オートエンコーダの基本構造
@@ -104,10 +109,10 @@ channels: 3
 エンコーダ側では、
 
 ```yaml
-enc_channels: [32, 64, 128]
+enc_channels: [32, 64]
 ```
 
-により、次のような3段のブロックが作られます。
+により、次のような2段のブロックが作られます。
 
 各ブロックの構成  
 > Conv(3×3) → BatchNorm → ReLU → MaxPool(2×2)
@@ -119,14 +124,13 @@ MaxPool(2×2) によって **縦横サイズが1/2** になります。
 | 入力 | 3 | 256×256 |
 | 1層目 | 32 | 256 → 128 |
 | 2層目 | 64 | 128 → 64 |
-| 3層目 | 128 | 64 → 32 |
 
 最終的に得られる特徴マップは：
 
-- チャネル：128  
-- サイズ：32×32  
+- チャネル：64
+- サイズ：64×64
 
-これを flatten して **128 × 32 × 32 = 131072 次元** となります。
+これを flatten して **64 × 64 × 64 = 262144 次元** となります。
 
 ---
 
@@ -135,10 +139,10 @@ MaxPool(2×2) によって **縦横サイズが1/2** になります。
 設定ファイルの：
 
 ```yaml
-latent_dim: 32
+latent_dim: 2
 ```
 
-により、Encoder の最終出力（131072次元）を **32次元の潜在ベクトル**に圧縮します。
+により、Encoder の最終出力（262144次元）を **2次元の潜在ベクトル**に圧縮します。
 
 ### 潜在次元を変更するとどうなるか？
 
@@ -157,19 +161,18 @@ latent_dim: 32
 
 Decoder は Encoder の逆順で構築されます。
 
-設定の `[32, 64, 128]` が逆順になり：
+設定の `[32, 64]` が逆順になり：
 
 ```
-[128, 64, 32]
+[64, 32]
 ```
 
 となり、次のように復元されます。
 
 | 層 | 入力チャネル → 出力チャネル | サイズ |
 |---|---|---|
-| 1層目 | 128 → 64 | 32 → 64 |
-| 2層目 | 64 → 32 | 64 → 128 |
-| 3層目 | 32 → 3 | 128 → 256（元の画像） |
+| 1層目 | 64 → 32 | 64 → 128 |
+| 2層目 | 32 → 3 | 128 → 256（元の画像） |
 
 最終層では `Sigmoid()` により画素値を [0,1] に整形します。
 
@@ -179,7 +182,7 @@ Decoder は Encoder の逆順で構築されます。
 
 ### **(1) enc_channels：モデルの大きさ・深さ**
 ```yaml
-enc_channels: [32, 64, 128]
+enc_channels: [32, 64]
 ```
 
 - リストを長くする → 層が増え、より深いモデルに  
@@ -191,7 +194,7 @@ enc_channels: [32, 64, 128]
 
 ### **(2) latent_dim：圧縮度合いの調整**
 ```yaml
-latent_dim: 32
+latent_dim: 2
 ```
 
 PoC では良い感じの値を探索する必要があります。

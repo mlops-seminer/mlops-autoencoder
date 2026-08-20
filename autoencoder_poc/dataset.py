@@ -1,8 +1,9 @@
 import os
 import glob
 import hydra
+import torch
 from PIL import Image
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset, DataLoader, Subset, random_split
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 
@@ -40,6 +41,14 @@ def get_transforms(cfg):
     return transforms.Compose(transform_list)
 
 def get_dataloaders(cfg):
+    validation_ratio = float(cfg.dataset.validation_ratio)
+    if not 0 <= validation_ratio < 1:
+        raise ValueError("dataset.validation_ratio は0以上1未満で指定してください。")
+    if int(cfg.dataset.batch_size) <= 0:
+        raise ValueError("dataset.batch_size は1以上で指定してください。")
+    if int(cfg.dataset.num_workers) < 0:
+        raise ValueError("dataset.num_workers は0以上で指定してください。")
+
     transform = get_transforms(cfg)
     
     # --- Train Data Loading ---
@@ -60,14 +69,12 @@ def get_dataloaders(cfg):
     
     if not train_files:
         print(f"Warning: No images found in {train_dir}")
-        # エラーにせず、空のリストで進める（テストのみ実行したい場合などを考慮）
-        # ただし今回はPoCなのでエラーを出したほうが親切かもしれないが、一旦printのみ。
     
     full_train_dataset = SimpleImageDataset(train_files, transform=transform)
     
     # Validation Split
     if len(full_train_dataset) > 0:
-        val_size = int(len(full_train_dataset) * cfg.dataset.validation_ratio)
+        val_size = int(len(full_train_dataset) * validation_ratio)
         train_size = len(full_train_dataset) - val_size
         
         # データが少なすぎてval_sizeが0になるのを防ぐ
@@ -75,7 +82,20 @@ def get_dataloaders(cfg):
             val_size = 1
             train_size = len(full_train_dataset) - 1
             
-        train_dataset, val_dataset = random_split(full_train_dataset, [train_size, val_size])
+        split_strategy = str(cfg.dataset.get("split_strategy", "sequential")).lower()
+        if split_strategy == "sequential":
+            # 時刻順ファイルの後半をvalidationにし、近接フレームの混入を抑える
+            train_dataset = Subset(full_train_dataset, range(train_size))
+            val_dataset = Subset(full_train_dataset, range(train_size, len(full_train_dataset)))
+        elif split_strategy == "random":
+            generator = torch.Generator().manual_seed(int(cfg.dataset.get("seed", 42)))
+            train_dataset, val_dataset = random_split(
+                full_train_dataset, [train_size, val_size], generator=generator
+            )
+        else:
+            raise ValueError(
+                "dataset.split_strategy は sequential または random を指定してください。"
+            )
         
         train_loader = DataLoader(
             train_dataset, 
@@ -84,12 +104,14 @@ def get_dataloaders(cfg):
             num_workers=cfg.dataset.num_workers
         )
         
-        val_loader = DataLoader(
-            val_dataset, 
-            batch_size=cfg.dataset.batch_size, 
-            shuffle=False, 
-            num_workers=cfg.dataset.num_workers
-        )
+        val_loader = None
+        if val_size > 0:
+            val_loader = DataLoader(
+                val_dataset,
+                batch_size=cfg.dataset.batch_size,
+                shuffle=False,
+                num_workers=cfg.dataset.num_workers
+            )
     else:
         train_loader = None
         val_loader = None
