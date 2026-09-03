@@ -1,28 +1,28 @@
 dataset:
   root_dir: "autoencoder_poc/data/kinoko"  # データセットのルートディレクトリ
-  train_dir: "train/good"                  # トレーニングデータのサブディレクトリ
+  train_dir: "train_augmented/good"        # トレーニングデータのサブディレクトリ "train_augmented/good"を指定すると拡張データで学習
   test_dir: "test"                         # テストデータのサブディレクトリ
   input_size: [256, 256]                    # 入力画像のサイズ
   channels: 3                               # RGB画像なら3、グレースケールなら1
   validation_ratio: 0.1
-  split_strategy: "sequential"              # 連続フレームの混入を抑える時系列分割。randomも指定可
+  split_strategy: "random"              # データの分割方法として sequential（順番どおり） と random（ランダム）の選択
   batch_size: 32
   num_workers: 0
   seed: 42
 
 model:
   # 再学習元モデルと同じ構造を指定してください。
-  enc_channels: [32, 64]
+  enc_channels: [16, 32]
   latent_dim: 2
 
 training:
   epochs: 10
-  learning_rate: 0.000001
+  learning_rate: 0.00001
   early_stopping_patience: 5
 
   # 再学習設定
   resume:
-    enabled: true              # true: 学習済みモデルから再学習、false: 新規学習
+    enabled: false              # true: 学習済みモデルから再学習、false: 新規学習
     source: "registry"          # registry または local
 
     # --- MLflow Model Registryから取得する場合 ---
