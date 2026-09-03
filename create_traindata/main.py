@@ -203,7 +203,7 @@ class DataCollector:
         cap.release()
         cv2.destroyAllWindows()
 
-@hydra.main(version_base=None, config_path="conf", config_name="config")
+@hydra.main(version_base=None, config_path="config", config_name="config")
 def main(cfg: DictConfig):
     # crop_sizeの取得（設定がない場合はNone）
     crop_size = None
